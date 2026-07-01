@@ -224,6 +224,7 @@ input, textarea { font-family: inherit; }
   display: flex; align-items: center; gap: 10px;
 }
 .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.divider.first { margin-top: 2px; }
 
 /* ---------- Segmented control ---------- */
 .segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

@@ -279,29 +279,7 @@ function LeadForm({ form, setForm, onSave, onCancel, hasEndpoint }) {
         </div>
 
         <div className="sheet-body">
-          <Field label="Date">
-            <input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} />
-          </Field>
-          <Field label="Name">
-            <input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Full name" autoFocus />
-          </Field>
-          <Field label="Phone">
-            <input type="tel" inputMode="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="Phone number" />
-          </Field>
-          <Field label="Email">
-            <input type="email" inputMode="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="name@company.com" />
-          </Field>
-          <Field label="Company">
-            <input value={form.company} onChange={(e) => set('company', e.target.value)} placeholder="Company / organization" />
-          </Field>
-          <Field label="Position">
-            <input value={form.position} onChange={(e) => set('position', e.target.value)} placeholder="Job title" />
-          </Field>
-          <Field label="Website">
-            <input type="url" inputMode="url" value={form.website} onChange={(e) => set('website', e.target.value)} placeholder="https://…" />
-          </Field>
-
-          <div className="divider">Lead tags</div>
+          <div className="divider first">Lead tags</div>
 
           <Field label="Hot or not">
             <div className="segmented">
@@ -324,6 +302,30 @@ function LeadForm({ form, setForm, onSave, onCancel, hasEndpoint }) {
 
           <Field label="Notes">
             <textarea rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Anything to remember…" />
+          </Field>
+
+          <div className="divider">Contact details</div>
+
+          <Field label="Date">
+            <input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} />
+          </Field>
+          <Field label="Name">
+            <input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Full name" />
+          </Field>
+          <Field label="Phone">
+            <input type="tel" inputMode="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="Phone number" />
+          </Field>
+          <Field label="Email">
+            <input type="email" inputMode="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="name@company.com" />
+          </Field>
+          <Field label="Company">
+            <input value={form.company} onChange={(e) => set('company', e.target.value)} placeholder="Company / organization" />
+          </Field>
+          <Field label="Position">
+            <input value={form.position} onChange={(e) => set('position', e.target.value)} placeholder="Job title" />
+          </Field>
+          <Field label="Website">
+            <input type="url" inputMode="url" value={form.website} onChange={(e) => set('website', e.target.value)} placeholder="https://…" />
           </Field>
         </div>
 
