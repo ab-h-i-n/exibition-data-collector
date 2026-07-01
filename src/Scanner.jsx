@@ -22,14 +22,10 @@ export default function Scanner({ onResult, onClose }) {
     });
     scannerRef.current = html5;
 
-    const config = {
-      fps: 12,
-      qrbox: (vw, vh) => {
-        const size = Math.floor(Math.min(vw, vh) * 0.75);
-        return { width: size, height: size };
-      },
-      aspectRatio: 1.0,
-    };
+    // No qrbox → decode the FULL frame instead of a small center box, so a QR
+    // that's further away (and smaller in the frame) can still be read. Higher
+    // fps gives more chances to catch a sharply-focused frame.
+    const config = { fps: 15 };
 
     const handle = (decodedText) => {
       if (handledRef.current) return;
@@ -79,14 +75,22 @@ export default function Scanner({ onResult, onClose }) {
         setZoom({ min, max, step, value });
       }
       if (caps.torch) setTorch((t) => ({ ...t, supported: true }));
+      // Continuous autofocus keeps far / angled badges sharp enough to decode.
+      if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+        track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+      }
     };
 
+    // Ask for a high-resolution stream so a small/distant QR carries enough
+    // detail to decode from further away (default is often just 480p/720p).
+    const hi = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+
     html5
-      .start({ facingMode: { exact: 'environment' } }, config, handle, () => {})
+      .start({ facingMode: { exact: 'environment' }, ...hi }, config, handle, () => {})
       .then(onStarted)
       .catch(() =>
         html5
-          .start({ facingMode: 'environment' }, config, handle, () => {})
+          .start({ facingMode: 'environment', ...hi }, config, handle, () => {})
           .then(onStarted)
           .catch(async () => {
             try {
@@ -94,7 +98,7 @@ export default function Scanner({ onResult, onClose }) {
               if (!cams?.length) throw new Error('No camera found');
               const back =
                 cams.find((c) => /back|rear|environment/i.test(c.label)) || cams[cams.length - 1];
-              await html5.start({ deviceId: { exact: back.id } }, config, handle, () => {});
+              await html5.start({ deviceId: { exact: back.id }, ...hi }, config, handle, () => {});
               onStarted();
             } catch (e) {
               setError(cameraError(e));
