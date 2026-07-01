@@ -21,6 +21,7 @@ export default function Scanner({ onResult, onClose }) {
   useEffect(() => {
     handledRef.current = false;
     let settled = false;
+    let disposed = false;
 
     const html5 = new Html5Qrcode(READER_ID, {
       verbose: false,
@@ -35,6 +36,14 @@ export default function Scanner({ onResult, onClose }) {
         return { width: s, height: s };
       },
       aspectRatio: 1.0,
+      // Resolution/facingMode must go here (NOT in the first start() arg, which
+      // html5-qrcode requires to be a single-key camera selector). Higher res
+      // helps read smaller / further-away QR codes.
+      videoConstraints: {
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
     };
 
     const handle = (text) => {
@@ -67,57 +76,39 @@ export default function Scanner({ onResult, onClose }) {
       setError(cameraError(e));
     };
 
-    // A start() that rejects if it doesn't come up within `ms` — prevents a
-    // single stalled camera request from hanging the whole overlay forever.
-    const startWithTimeout = (source, ms) =>
-      Promise.race([
-        html5.start(source, config, handle, () => {}),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('start-timeout')), ms)),
-      ]);
-
-    // Best range first (rear + 1080p), then progressively safer fallbacks.
-    const sources = [
-      { facingMode: { exact: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      { facingMode: 'environment' },
-    ];
-
-    const run = async () => {
-      let lastErr = null;
-      for (const source of sources) {
-        try {
-          await startWithTimeout(source, 6000);
-          return markStarted();
-        } catch (e) {
-          lastErr = e;
-          await stop(); // cancel a failed/stalled attempt before the next
-        }
-      }
-      // Last resort: enumerate cameras and start the rear one by id.
+    // IMPORTANT: html5-qrcode's start() must NOT be raced/abandoned or called
+    // again while it's in-flight — that throws "Cannot transition to a new
+    // state, already under transition". So we do exactly ONE start() per mount;
+    // on failure the user taps Retry, which remounts a fresh instance.
+    const start = async () => {
       try {
-        const cams = (await Html5Qrcode.getCameras()) || [];
-        const back =
-          cams.find((c) => /back|rear|environment/i.test(c.label)) || cams[cams.length - 1];
-        if (!back) throw new Error('No camera found');
-        await startWithTimeout(back.id, 8000);
-        return markStarted();
+        // First arg is a single-key camera selector; the detailed constraints
+        // (resolution) come from config.videoConstraints above.
+        await html5.start({ facingMode: 'environment' }, config, handle, () => {});
+        if (disposed) {
+          await stop(); // unmounted mid-start — release the camera
+          return;
+        }
+        markStarted();
       } catch (e) {
-        fail(e || lastErr);
+        if (!disposed) fail(e);
       }
     };
 
-    // Final backstop for the "permission dialog never answered" case.
+    // Backstop if start() never settles (e.g. permission dialog left unanswered).
+    // It only shows a message — it never touches the scanner, so it cannot
+    // itself trigger a transition error.
     const watchdog = setTimeout(() => {
-      if (settled) return;
+      if (settled || disposed) return;
       settled = true;
       setError("Camera didn't start. Tap Retry, or enter the lead manually.");
-    }, 30000);
+    }, 20000);
 
-    run();
+    start();
 
     return () => {
+      disposed = true;
       handledRef.current = true;
-      settled = true;
       clearTimeout(watchdog);
       stop();
     };
