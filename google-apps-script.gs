@@ -31,9 +31,10 @@ var HEADERS = [
 // Leave WA_ENABLED = false until your open-wa server is running and reachable
 // over HTTPS (see README → "Auto-send a WhatsApp flyer").
 // ---------------------------------------------------------------------------
-var WA_ENABLED = false; // master switch — set true once open-wa is set up
-var OPENWA_BASE_URL = 'https://YOUR-OPENWA-URL'; // no trailing slash (e.g. your cloudflared https URL)
-var OPENWA_API_KEY = 'YOUR_OPENWA_API_KEY'; // the -k / --api-key you started open-wa with
+var WA_ENABLED = false; // master switch — set true once the values below are filled
+var OPENWA_BASE_URL = 'https://openwa.menuthere.com'; // OpenWA gateway base (no trailing slash)
+var OPENWA_SESSION_ID = 'YOUR_SESSION_ID'; // connected WhatsApp session id (GET /api/sessions)
+var OPENWA_API_KEY = 'YOUR_OPENWA_API_KEY'; // gateway X-API-Key
 // Works out-of-the-box from the public repo; or swap to https://<your-app>/flyer.jpg
 var WA_IMAGE_URL = 'https://raw.githubusercontent.com/ab-h-i-n/exibition-data-collector/main/public/flyer.jpg';
 var WA_CAPTION = 'Thanks for visiting us at the expo! 🚀 Here is what Menuthere does — reply to chat with us.';
@@ -118,15 +119,15 @@ function sendFlyerWhatsApp_(r) {
   try {
     var chatId = toChatId_(r && r.phone);
     if (!chatId) return;
+    var endpoint =
+      OPENWA_BASE_URL + '/api/sessions/' + OPENWA_SESSION_ID + '/messages/send-image';
     var payload = {
-      args: {
-        to: chatId,
-        url: WA_IMAGE_URL,
-        filename: 'menuthere-flyer.jpg',
-        caption: WA_CAPTION,
-      },
+      chatId: chatId,
+      url: WA_IMAGE_URL,
+      filename: 'menuthere-flyer.jpg',
+      caption: WA_CAPTION,
     };
-    UrlFetchApp.fetch(OPENWA_BASE_URL + '/sendFileFromUrl', {
+    UrlFetchApp.fetch(endpoint, {
       method: 'post',
       contentType: 'application/json',
       headers: { 'X-API-Key': OPENWA_API_KEY },
