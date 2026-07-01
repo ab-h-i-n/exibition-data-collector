@@ -144,8 +144,17 @@ function sendFlyerWhatsApp_(r) {
     var code = res.getResponseCode();
     return code >= 200 && code < 300 ? 'Sent' : 'Failed (' + code + ')';
   } catch (err) {
-    return 'Failed';
+    return 'Failed: ' + (err && err.message ? err.message : err);
   }
+}
+
+// Run this ONCE from the editor (pick "testWhatsApp" in the toolbar → Run) to
+// grant the "Connect to an external service" permission and send yourself a test
+// flyer. Watch the Execution log — it prints 'Sent' or 'Failed: <reason>'.
+function testWhatsApp() {
+  var status = sendFlyerWhatsApp_({ phone: '917012944024' });
+  Logger.log('WhatsApp test result: ' + status);
+  return status;
 }
 
 // Turns a scanned phone number into a WhatsApp chatId (e.g. "916282826684@c.us").
