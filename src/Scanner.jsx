@@ -17,13 +17,11 @@ export default function Scanner({ onResult, onClose }) {
     });
     scannerRef.current = html5;
 
+    // No qrbox → html5-qrcode decodes the ENTIRE camera frame instead of only a
+    // center box, so a small QR anywhere in view is read (with a qrbox, the code
+    // had to roughly fill the on-screen box to scan).
     const config = {
       fps: 12,
-      qrbox: (vw, vh) => {
-        const size = Math.floor(Math.min(vw, vh) * 0.75);
-        return { width: size, height: size };
-      },
-      aspectRatio: 1.0,
     };
 
     const handle = (decodedText) => {
