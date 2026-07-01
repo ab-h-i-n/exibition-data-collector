@@ -10,6 +10,7 @@ import {
   getEndpoint,
   setEndpoint,
   downloadCSV,
+  ENV_ENDPOINT,
 } from './lib/storage.js';
 
 const uid = () =>
@@ -125,7 +126,7 @@ export default function App() {
 
   function saveEndpoint(url) {
     setEndpoint(url);
-    setEndpointState(url.trim());
+    setEndpointState(getEndpoint()); // falls back to VITE_SHEET_ENDPOINT if cleared
     setShowSettings(false);
     notify('Google Sheet connected ✓', 'success');
   }
@@ -374,6 +375,12 @@ function Settings({ endpoint, onSave, onClose }) {
               placeholder="https://script.google.com/macros/s/…/exec"
             />
           </Field>
+          {ENV_ENDPOINT && (
+            <p className="muted small">
+              ✓ A default Sheet is connected from the deployment. Leave this blank to use it,
+              or paste a URL to override on this device.
+            </p>
+          )}
           <p className="muted small">
             Follow <b>README.md → Connect your Google Sheet</b> to create this URL, then paste it
             here. It's stored only on this device.

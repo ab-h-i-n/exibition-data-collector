@@ -5,6 +5,11 @@
 const KEY = 'edc_records';
 const ENDPOINT_KEY = 'edc_endpoint';
 
+// A default Sheet endpoint can be baked in at build time via Vite:
+// set VITE_SHEET_ENDPOINT (Vercel env var or .env.local). A URL pasted in the
+// app's Settings is stored in localStorage and overrides this per-device.
+export const ENV_ENDPOINT = (import.meta.env.VITE_SHEET_ENDPOINT || '').trim();
+
 export const COLUMNS = [
   'date',
   'name',
@@ -55,7 +60,7 @@ export function deleteRecord(id) {
 }
 
 export function getEndpoint() {
-  return localStorage.getItem(ENDPOINT_KEY) || '';
+  return (localStorage.getItem(ENDPOINT_KEY) || ENV_ENDPOINT || '').trim();
 }
 
 export function setEndpoint(url) {

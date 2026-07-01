@@ -57,6 +57,23 @@ That's it. The script auto-creates a **Leads** tab with the header row on the
 first scan. Open the `/exec` URL in a browser anytime — it should reply
 `{"ok":true,...}`.
 
+### Auto-connect every device (recommended — set it once)
+
+So every phone auto-saves to the Sheet without pasting the URL in Settings, bake
+the `/exec` URL in as a build-time env var:
+
+- **Vercel:** Project → **Settings → Environment Variables** → add
+  `VITE_SHEET_ENDPOINT` = your `/exec` URL (all environments) → **Save**, then
+  **Redeploy**.
+- **Local dev:** `cp .env.example .env.local` and set the same value.
+
+> ⚠️ Vite bakes env vars in at **build time**, so you must **redeploy** after
+> adding or changing it. Because this is a static site, the URL ends up visible
+> in the shipped JS — that's fine here (the endpoint is already public), but
+> never put real secrets in a `VITE_*` var.
+
+A URL pasted in the app's Settings still overrides this on that device.
+
 ---
 
 ## 4. Using it at the expo
