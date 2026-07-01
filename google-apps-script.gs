@@ -43,9 +43,23 @@ function doPost(e) {
   }
 }
 
-// Lets you open the deployment URL in a browser to confirm it's live.
+// Open the deployment URL in a browser to confirm it's live AND see exactly
+// which spreadsheet/tab is receiving data and how many lead rows exist.
 function doGet() {
-  return json_({ ok: true, message: 'Expo Lead Scanner endpoint is live.' });
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = getSheet_();
+    return json_({
+      ok: true,
+      message: 'Expo Lead Scanner endpoint is live.',
+      spreadsheet: ss.getName(),
+      spreadsheetUrl: ss.getUrl(),
+      tab: SHEET_NAME,
+      leadRows: Math.max(0, sheet.getLastRow() - 1),
+    });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
+  }
 }
 
 function getSheet_() {
