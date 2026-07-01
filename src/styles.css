@@ -175,6 +175,25 @@ input, textarea { font-family: inherit; }
   align-items: center; justify-content: center; gap: 16px; padding: 30px;
   text-align: center; color: #fff; background: rgba(0,0,0,.85);
 }
+.scanner-actions { display: flex; align-items: center; gap: 8px; }
+.icon-btn.light.active { background: #fff; color: #111; border-color: #fff; }
+
+.zoom-bar {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(72px + var(--safe-bottom));
+  display: flex; align-items: center; gap: 12px;
+  width: min(86%, 420px); padding: 9px 14px; border-radius: 999px;
+  background: rgba(0, 0, 0, .45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.zoom-bar input[type='range'] {
+  flex: 1; height: 4px; accent-color: var(--primary); background: transparent;
+}
+.zoom-btn {
+  width: 34px; height: 34px; flex: 0 0 auto; border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .4); background: rgba(255, 255, 255, .14);
+  color: #fff; font-size: 18px; line-height: 1; display: grid; place-items: center;
+}
+.zoom-btn:active { background: rgba(255, 255, 255, .3); }
 
 /* ---------- Bottom sheet (form + settings) ---------- */
 .sheet-overlay {
