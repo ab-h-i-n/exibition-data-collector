@@ -41,7 +41,7 @@ var WA_IMAGE_URL = 'https://raw.githubusercontent.com/ab-h-i-n/exibition-data-co
 var WA_CAPTION = 'Hello, this is the team from Menuthere. Thank you for enquiring about our product today.';
 // Two follow-up messages, sent as plain text right after the flyer, in order.
 var WA_FOLLOWUP_1 = 'Please find a short demo video of our platform here: https://youtube.com/shorts/6PR2BqLIxIA?si=OHtPPRDlykojCZGs - kindly note the video is currently in Malayalam. If language is a concern, please let us know and we will be glad to arrange it in your preferred language.';
-var WA_FOLLOWUP_2 = 'We would also be glad to connect over a quick call to walk you through how Menuthere can help your business. Could you please share a convenient time for us to reach you?';
+var WA_FOLLOWUP_2 = 'Are you available for a call today or tomorrow?';
 var WA_COUNTRY_CODE = '91'; // prepended to local 10-digit numbers
 
 function doPost(e) {
