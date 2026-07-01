@@ -17,11 +17,18 @@ export default function Scanner({ onResult, onClose }) {
     });
     scannerRef.current = html5;
 
-    // No qrbox → html5-qrcode decodes the ENTIRE camera frame instead of only a
-    // center box, so a small QR anywhere in view is read (with a qrbox, the code
-    // had to roughly fill the on-screen box to scan).
+    // No qrbox → html5-qrcode decodes the ENTIRE camera frame (not just a center
+    // box). videoConstraints requests a high-res rear stream so a dense QR held
+    // at arm's length still has enough pixels-per-module to decode. NOTE: this is
+    // the correct place for resolution — putting width/height in the first
+    // start() arg is invalid (that caused the earlier camera failures).
     const config = {
       fps: 12,
+      videoConstraints: {
+        facingMode: 'environment',
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
     };
 
     const handle = (decodedText) => {
