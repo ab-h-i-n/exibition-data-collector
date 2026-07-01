@@ -175,6 +175,8 @@ input, textarea { font-family: inherit; }
   align-items: center; justify-content: center; gap: 16px; padding: 30px;
   text-align: center; color: #fff; background: rgba(0,0,0,.85);
 }
+.scanner-error-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.btn.light-outline { background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, .5); }
 .scanner-actions { display: flex; align-items: center; gap: 8px; }
 .icon-btn.light.active { background: #fff; color: #111; border-color: #fff; }
 
