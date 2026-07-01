@@ -38,7 +38,9 @@ var OPENWA_SESSION_ID = 'YOUR_SESSION_ID'; // connected WhatsApp session id (GET
 var OPENWA_API_KEY = 'YOUR_OPENWA_API_KEY'; // gateway X-API-Key
 // Works out-of-the-box from the public repo; or swap to https://<your-app>/flyer.jpg
 var WA_IMAGE_URL = 'https://raw.githubusercontent.com/ab-h-i-n/exibition-data-collector/main/public/flyer.jpg';
-var WA_CAPTION = 'Thanks for visiting us at the expo! 🚀 Here is what Menuthere does — reply to chat with us.';
+var WA_CAPTION = 'Hello, this is the team from Menuthere. Thank you for enquiring about our product today. Please find a short demo video of our platform here: https://youtube.com/shorts/6PR2BqLIxIA?si=OHtPPRDlykojCZGs - kindly note the video is currently in Malayalam. If language is a concern, please let us know and we will be glad to arrange it in your preferred language.';
+// Second message, sent as plain text right after the flyer.
+var WA_FOLLOWUP = 'We would also be glad to connect over a quick call to walk you through how Menuthere can help your business. Could you please share a convenient time for us to reach you?';
 var WA_COUNTRY_CODE = '91'; // prepended to local 10-digit numbers
 
 function doPost(e) {
@@ -126,23 +128,30 @@ function sendFlyerWhatsApp_(r) {
   try {
     var chatId = toChatId_(r && r.phone);
     if (!chatId) return 'No number';
-    var endpoint =
-      OPENWA_BASE_URL + '/api/sessions/' + OPENWA_SESSION_ID + '/messages/send-image';
-    var payload = {
-      chatId: chatId,
-      url: WA_IMAGE_URL,
-      filename: 'menuthere-flyer.jpg',
-      caption: WA_CAPTION,
+    var base = OPENWA_BASE_URL + '/api/sessions/' + OPENWA_SESSION_ID + '/messages/';
+    var opts = function (payload) {
+      return {
+        method: 'post',
+        contentType: 'application/json',
+        headers: { 'X-API-Key': OPENWA_API_KEY },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true,
+      };
     };
-    var res = UrlFetchApp.fetch(endpoint, {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { 'X-API-Key': OPENWA_API_KEY },
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true,
-    });
+    // 1) flyer image with the demo-video caption
+    var res = UrlFetchApp.fetch(
+      base + 'send-image',
+      opts({ chatId: chatId, url: WA_IMAGE_URL, filename: 'menuthere-flyer.jpg', caption: WA_CAPTION })
+    );
     var code = res.getResponseCode();
-    return code >= 200 && code < 300 ? 'Sent' : 'Failed (' + code + ')';
+    var imageOk = code >= 200 && code < 300;
+    // 2) follow-up text (call availability) — best effort, won't flip the image status
+    try {
+      UrlFetchApp.fetch(base + 'send-text', opts({ chatId: chatId, text: WA_FOLLOWUP }));
+    } catch (e2) {
+      /* ignore follow-up failure */
+    }
+    return imageOk ? 'Sent' : 'Failed (' + code + ')';
   } catch (err) {
     return 'Failed: ' + (err && err.message ? err.message : err);
   }
