@@ -23,6 +23,7 @@ var HEADERS = [
   'need_to_call',
   'notes',
   'scanned_at',
+  'whatsapp_sent',
 ];
 
 // ---------------------------------------------------------------------------
@@ -47,15 +48,14 @@ function doPost(e) {
     var body = JSON.parse(e.postData.contents);
     var records = Array.isArray(body.records) ? body.records : [body];
     var sheet = getSheet_();
+    var whatsapp = [];
     records.forEach(function (r) {
-      sheet.appendRow(rowFor_(r));
+      // Send first (if enabled) so the row records whether it actually went out.
+      var waStatus = WA_ENABLED ? sendFlyerWhatsApp_(r) : '';
+      sheet.appendRow(rowFor_(r, waStatus));
+      whatsapp.push(waStatus);
     });
-    if (WA_ENABLED) {
-      records.forEach(function (r) {
-        sendFlyerWhatsApp_(r);
-      });
-    }
-    return json_({ ok: true, count: records.length });
+    return json_({ ok: true, count: records.length, whatsapp: whatsapp });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   } finally {
@@ -90,11 +90,16 @@ function getSheet_() {
     sheet.appendRow(HEADERS);
     sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
     sheet.setFrozenRows(1);
+  } else if (sheet.getLastColumn() < HEADERS.length) {
+    // A column was added to HEADERS (e.g. whatsapp_sent) — extend the header row
+    // of an existing sheet so the new values line up under a proper header.
+    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+    sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
   }
   return sheet;
 }
 
-function rowFor_(r) {
+function rowFor_(r, waStatus) {
   r = r || {};
   return [
     r.date || '',
@@ -110,15 +115,17 @@ function rowFor_(r) {
     r.needToCall ? 'Yes' : 'No',
     r.notes || '',
     r.scannedAt || new Date().toISOString(),
+    waStatus || '',
   ];
 }
 
-// Sends the flyer image to one lead via the open-wa EASY API. Never throws —
-// a WhatsApp failure must not block saving the lead to the sheet.
+// Sends the flyer to one lead via the OpenWA gateway and returns a status
+// string for the sheet: 'Sent' | 'Failed (<code>)' | 'Failed' | 'No number'.
+// Never throws — a WhatsApp failure must not block saving the lead.
 function sendFlyerWhatsApp_(r) {
   try {
     var chatId = toChatId_(r && r.phone);
-    if (!chatId) return;
+    if (!chatId) return 'No number';
     var endpoint =
       OPENWA_BASE_URL + '/api/sessions/' + OPENWA_SESSION_ID + '/messages/send-image';
     var payload = {
@@ -127,15 +134,17 @@ function sendFlyerWhatsApp_(r) {
       filename: 'menuthere-flyer.jpg',
       caption: WA_CAPTION,
     };
-    UrlFetchApp.fetch(endpoint, {
+    var res = UrlFetchApp.fetch(endpoint, {
       method: 'post',
       contentType: 'application/json',
       headers: { 'X-API-Key': OPENWA_API_KEY },
       payload: JSON.stringify(payload),
       muteHttpExceptions: true,
     });
+    var code = res.getResponseCode();
+    return code >= 200 && code < 300 ? 'Sent' : 'Failed (' + code + ')';
   } catch (err) {
-    // swallow — the lead is already safely in the sheet
+    return 'Failed';
   }
 }
 

@@ -5,7 +5,8 @@ A mobile-first Vite + React web app for exhibitions. Scan a visitor's badge QR
 straight into a **Google Sheet** — one row per lead.
 
 **Sheet columns:** `date · name · phone · email · company · position · website ·
-own_delivery_riders · petpooja · hot_or_not · need_to_call · notes · scanned_at`
+own_delivery_riders · petpooja · hot_or_not · need_to_call · notes · scanned_at ·
+whatsapp_sent`
 
 Every scan is also saved on the device (localStorage) and can be exported to CSV,
 so no lead is lost if the venue Wi-Fi drops.
