@@ -93,42 +93,30 @@ A URL pasted in the app's Settings still overrides this on that device.
 
 ---
 
-## 5. Auto-send a WhatsApp flyer (optional)
+## 5. Auto-send a WhatsApp flyer (official Cloud API)
 
-When a lead is saved, the Apps Script can WhatsApp them your flyer via
-[open-wa](https://github.com/open-wa/wa-automate-nodejs). The flyer lives at
-`public/flyer.jpg` (served at `https://<your-app>/flyer.jpg` after deploy).
+When a **new** lead is saved, the Apps Script sends them the flyer via the
+official **WhatsApp Cloud API** using an approved template. The flyer lives at
+`public/flyer.jpg` (served at the raw GitHub URL and `https://<your-app>/flyer.jpg`).
 
-open-wa runs a real WhatsApp Web session in a headless browser, so it needs its
-own **always-on host reachable over HTTPS** — it can't run on Vercel or Apps Script.
+You need an approved template on the **same WhatsApp Business Account (WABA)** as
+your sending number — this repo uses **`expo_flyer_msg`** (image header + body +
+a "Fill Form" URL button). Then in [`google-apps-script.gs`](./google-apps-script.gs):
 
-**Quickest path to a running + reachable server:**
+- `WA_ENABLED = true`
+- `WA_PHONE_NUMBER_ID` = your Cloud API sender's Phone Number ID
+- `WA_ACCESS_TOKEN` = your Cloud API access token *(stays only in the private script)*
+- `WA_TEMPLATE_NAME` / `WA_TEMPLATE_LANG` = the template + its language (e.g. `en`)
+- `WA_IMAGE_URL` = the flyer URL
 
-1. On a machine that stays on during the expo (laptop or a small VM):
-   ```bash
-   npx @open-wa/wa-automate -k "your-secret-key" -p 8080
-   ```
-   A QR code prints in the terminal.
-2. On the phone that will send the flyer: WhatsApp → **Linked Devices → Link a
-   device** → scan the terminal QR. The session is saved (no rescans). The API is
-   now at `http://localhost:8080` (Swagger at `/api-docs`).
-3. Expose it over HTTPS so Google's servers can reach it:
-   ```bash
-   npx cloudflared tunnel --url http://localhost:8080
-   ```
-   Copy the printed `https://….trycloudflare.com` URL.
-4. In [`google-apps-script.gs`](./google-apps-script.gs) set `WA_ENABLED = true`,
-   `OPENWA_BASE_URL` (the cloudflared URL), `OPENWA_API_KEY`, `WA_IMAGE_URL`
-   (`https://<your-app>/flyer.jpg`), and adjust `WA_CAPTION` / `WA_COUNTRY_CODE`.
-   Then **redeploy** the Apps Script (Manage deployments → New version).
+Run the **`testWhatsApp`** function once from the editor to grant the
+"External requests" permission (declared in `appsscript.json`), then **redeploy**
+(Manage deployments → New version).
 
 **Notes**
-- The free `trycloudflare.com` URL changes on each restart — keep the tunnel +
-  open-wa running for the whole expo, or use a named tunnel / VPS for a stable URL.
-- Keep the sending phone online.
-- open-wa is unofficial automation; WhatsApp can ban numbers used for bulk or
-  unsolicited messaging. Only message people who shared their number at your booth,
-  and keep the volume reasonable.
+- The sending number and the template must be on the **same WABA**, or Meta
+  returns `132001 "template does not exist"`.
+- Editing a lead **never re-sends** WhatsApp — only genuinely new leads trigger a send.
 
 ## Project structure
 

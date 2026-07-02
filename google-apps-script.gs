@@ -1,13 +1,12 @@
 /**
  * Expo Lead Scanner — Google Sheets backend
  * =========================================
- * Paste this into a Google Sheet's Apps Script editor and deploy as a Web App.
- * See README.md → "Connect your Google Sheet" for the setup.
+ * Paste into the Sheet's Apps Script editor and deploy as a Web App.
  *
- * Upserts by lead id: a NEW lead is appended; editing an existing lead updates
- * ONLY that lead's own row (matched by its unique id — no other row is touched).
- * Sends the flyer + follow-up on WhatsApp to each new lead, rotating across
- * numbers, and records which one sent. Never re-messages a lead.
+ * - New lead  -> appends a row AND sends the flyer via the official WhatsApp
+ *                Cloud API (template expo_flyer_msg).
+ * - Editing a lead -> updates ONLY that lead's own row (matched by id); never
+ *                touches any other row, and never re-sends WhatsApp.
  */
 
 var SHEET_NAME = 'Leads';
@@ -26,25 +25,24 @@ var HEADERS = [
   'notes',
   'scanned_at',
   'whatsapp_sent',
-  'sent_from', // which WhatsApp number/session sent it
-  'id', // internal lead id — used to avoid messaging the same lead twice
+  'sent_from', // which WhatsApp number sent it
+  'id',        // internal lead id — used to update a lead instead of duplicating it
 ];
 
 // ---------------------------------------------------------------------------
-// WhatsApp auto-send via the OpenWA gateway.
-// Sends rotate across OPENWA_SESSIONS (spreads load across numbers).
-// Needs the "External requests" permission (declared in appsscript.json).
+// WhatsApp — official Cloud API (Meta). Sends the approved template to each
+// NEW lead. Fill WA_ACCESS_TOKEN (from your WhatsApp Cloud API creds) and set
+// WA_ENABLED = true. Requires the "External requests" permission in
+// appsscript.json (see README).
 // ---------------------------------------------------------------------------
-var WA_ENABLED = false; // master switch — set true once configured
-var OPENWA_BASE_URL = 'https://openwa.menuthere.com';
-var OPENWA_API_KEY = 'YOUR_OPENWA_API_KEY';
-var OPENWA_SESSIONS = [
-  { id: 'YOUR_SESSION_ID', name: 'session-1' },
-  // { id: 'ANOTHER_SESSION_ID', name: 'session-2' }, // add numbers to rotate
-];
+var WA_ENABLED = false; // master switch — set true once WA_ACCESS_TOKEN is filled
+var WA_API_VERSION = 'v22.0';
+var WA_PHONE_NUMBER_ID = 'YOUR_PHONE_NUMBER_ID'; // Cloud API sender phone number id
+var WA_ACCESS_TOKEN = 'YOUR_WHATSAPP_ACCESS_TOKEN'; // Cloud API access token (secret)
+var WA_TEMPLATE_NAME = 'expo_flyer_msg';
+var WA_TEMPLATE_LANG = 'en';
 var WA_IMAGE_URL = 'https://raw.githubusercontent.com/ab-h-i-n/exibition-data-collector/main/public/flyer.jpg';
-var WA_CAPTION = 'Hello! 👋 This is the Menuthere team.\n\nThank you for your interest in Menuthere today. To receive *priority support* and access to our *free trial*, please fill out this short form:\n\nhttps://forms.gle/igwJHfe96nnKBbef6\n\nWe look forward to helping you get started!';
-var WA_FOLLOWUP_2 = 'Are you available for a call today or tomorrow?';
+var WA_SENDER_LABEL = 'Menuthere'; // recorded in the sent_from column
 var WA_COUNTRY_CODE = '91'; // prepended to local 10-digit numbers
 
 function doPost(e) {
@@ -56,20 +54,24 @@ function doPost(e) {
     var sheet = getSheet_();
     var whatsapp = [];
     records.forEach(function (r) {
+      var existingRow = r.id ? findRowById_(sheet, r.id) : -1;
       var waStatus = '';
       var sentFrom = '';
-      if (WA_ENABLED) {
-        if (alreadySentWhatsApp_(sheet, r.id)) {
-          // Lead already messaged — do NOT send again on edits / re-syncs.
-          waStatus = 'Skipped (already sent)';
-        } else {
+      if (existingRow > 0) {
+        // Editing an existing lead: update ONLY its own row, keep the existing
+        // whatsapp_sent / sent_from, and do NOT resend.
+        waStatus = sheet.getRange(existingRow, colIndex_('whatsapp_sent')).getValue();
+        sentFrom = sheet.getRange(existingRow, colIndex_('sent_from')).getValue();
+        sheet.getRange(existingRow, 1, 1, HEADERS.length).setValues([rowFor_(r, waStatus, sentFrom)]);
+      } else {
+        // New lead: send the flyer (if enabled), then append a new row.
+        if (WA_ENABLED) {
           var result = sendFlyerWhatsApp_(r);
           waStatus = result.status;
           sentFrom = result.from;
         }
+        sheet.appendRow(rowFor_(r, waStatus, sentFrom));
       }
-      // Always append a new row — existing rows are never modified.
-      sheet.appendRow(rowFor_(r, waStatus, sentFrom));
       whatsapp.push(waStatus);
     });
     return json_({ ok: true, count: records.length, whatsapp: whatsapp });
@@ -80,8 +82,7 @@ function doPost(e) {
   }
 }
 
-// Open the deployment URL in a browser to confirm it's live AND see which
-// spreadsheet/tab is receiving data and how many lead rows exist.
+// Open the deployment URL in a browser to confirm it's live + see the target.
 function doGet() {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -108,8 +109,7 @@ function getSheet_() {
     sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
     sheet.setFrozenRows(1);
   } else if (sheet.getLastColumn() < HEADERS.length) {
-    // New columns were added to HEADERS — write ONLY the new header cells so
-    // existing headers and data are never overwritten.
+    // Only write the NEW header cells — never overwrite existing headers/data.
     var from = sheet.getLastColumn() + 1;
     var extra = HEADERS.slice(from - 1);
     sheet.getRange(1, from, 1, extra.length).setValues([extra]);
@@ -118,28 +118,21 @@ function getSheet_() {
   return sheet;
 }
 
-// 1-based column index for a header name (e.g. colIndex_('id')).
 function colIndex_(name) {
   return HEADERS.indexOf(name) + 1;
 }
 
-// True if a row with this lead id already shows a successful WhatsApp send, so
-// edits / re-syncs don't message the same lead again. Read-only (no writes).
-function alreadySentWhatsApp_(sheet, id) {
+// Row number (>= 2) whose 'id' column matches, else -1. Used to update a lead
+// in place instead of appending a duplicate.
+function findRowById_(sheet, id) {
   var last = sheet.getLastRow();
-  if (last < 2 || !id) return false;
   var idCol = colIndex_('id');
-  var waCol = colIndex_('whatsapp_sent');
-  var rows = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
-  for (var i = 0; i < rows.length; i++) {
-    if (
-      String(rows[i][idCol - 1]) === String(id) &&
-      String(rows[i][waCol - 1] || '').indexOf('Sent') === 0
-    ) {
-      return true;
-    }
+  if (last < 2 || !id || idCol < 1) return -1;
+  var ids = sheet.getRange(2, idCol, last - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(id)) return i + 2;
   }
-  return false;
+  return -1;
 }
 
 function rowFor_(r, waStatus, sentFrom) {
@@ -164,66 +157,62 @@ function rowFor_(r, waStatus, sentFrom) {
   ];
 }
 
-// Rotates the sending session across OPENWA_SESSIONS (position persisted in
-// Script Properties), so consecutive leads use different numbers.
-function nextSession_() {
-  var props = PropertiesService.getScriptProperties();
-  var n = parseInt(props.getProperty('WA_ROTATE') || '0', 10);
-  if (isNaN(n) || n < 0) n = 0;
-  var session = OPENWA_SESSIONS[n % OPENWA_SESSIONS.length];
-  props.setProperty('WA_ROTATE', String((n + 1) % 1000000));
-  return session;
-}
-
-// Sends the flyer (with caption) then the follow-up text via the rotated
-// session. Returns { status, from }. Never throws.
+// Sends the flyer template via the official WhatsApp Cloud API.
+// Returns { status, from }. Never throws.
 function sendFlyerWhatsApp_(r) {
   try {
-    var chatId = toChatId_(r && r.phone);
-    if (!chatId) return { status: 'No number', from: '' };
-    var session = nextSession_();
-    var base = OPENWA_BASE_URL + '/api/sessions/' + session.id + '/messages/';
-    var opts = function (payload) {
-      return {
-        method: 'post',
-        contentType: 'application/json',
-        headers: { 'X-API-Key': OPENWA_API_KEY },
-        payload: JSON.stringify(payload),
-        muteHttpExceptions: true,
-      };
+    var to = toWaNumber_(r && r.phone);
+    if (!to) return { status: 'No number', from: '' };
+    var payload = {
+      messaging_product: 'whatsapp',
+      to: to,
+      type: 'template',
+      template: {
+        name: WA_TEMPLATE_NAME,
+        language: { code: WA_TEMPLATE_LANG },
+        components: [
+          {
+            type: 'header',
+            parameters: [{ type: 'image', image: { link: WA_IMAGE_URL } }],
+          },
+        ],
+      },
     };
     var res = UrlFetchApp.fetch(
-      base + 'send-image',
-      opts({ chatId: chatId, url: WA_IMAGE_URL, filename: 'menuthere-flyer.jpg', caption: WA_CAPTION })
+      'https://graph.facebook.com/' + WA_API_VERSION + '/' + WA_PHONE_NUMBER_ID + '/messages',
+      {
+        method: 'post',
+        contentType: 'application/json',
+        headers: { Authorization: 'Bearer ' + WA_ACCESS_TOKEN },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true,
+      }
     );
     var code = res.getResponseCode();
-    var imageOk = code >= 200 && code < 300;
-    try {
-      Utilities.sleep(1200); // let the image land first
-      UrlFetchApp.fetch(base + 'send-text', opts({ chatId: chatId, text: WA_FOLLOWUP_2 }));
-    } catch (e2) {
-      /* follow-up is best-effort */
-    }
-    return { status: imageOk ? 'Sent' : 'Failed (' + code + ')', from: session.name };
+    if (code >= 200 && code < 300) return { status: 'Sent', from: WA_SENDER_LABEL };
+    var msg = '';
+    try { msg = JSON.parse(res.getContentText()).error.message; } catch (e) {}
+    return { status: 'Failed (' + code + (msg ? ': ' + msg : '') + ')', from: WA_SENDER_LABEL };
   } catch (err) {
     return { status: 'Failed: ' + (err && err.message ? err.message : err), from: '' };
   }
 }
 
-// Run once from the editor (select testWhatsApp -> Run) to test / grant perms.
+// Run once from the editor (select testWhatsApp -> Run) to grant the external-
+// requests permission and send yourself a test. Check the Execution log.
 function testWhatsApp() {
-  var result = sendFlyerWhatsApp_({ phone: '917012944024' });
-  Logger.log('WhatsApp test: ' + result.status + ' from ' + result.from);
-  return result;
+  var r = sendFlyerWhatsApp_({ phone: '917012944024' });
+  Logger.log('WhatsApp test: ' + r.status + ' from ' + r.from);
+  return r;
 }
 
-// Turns a scanned phone number into a WhatsApp chatId (e.g. "916282826684@c.us").
-function toChatId_(phone) {
+// Local 10-digit -> "<countrycode><number>" for the Cloud API "to" field.
+function toWaNumber_(phone) {
   if (!phone) return '';
-  var digits = String(phone).replace(/[^\d]/g, '').replace(/^0+/, '');
-  if (!digits) return '';
-  if (digits.length === 10) digits = WA_COUNTRY_CODE + digits; // local -> add country code
-  return digits + '@c.us';
+  var d = String(phone).replace(/[^\d]/g, '').replace(/^0+/, '');
+  if (!d) return '';
+  if (d.length === 10) d = WA_COUNTRY_CODE + d;
+  return d;
 }
 
 function json_(obj) {
