@@ -24,6 +24,7 @@ var HEADERS = [
   'notes',
   'scanned_at',
   'whatsapp_sent',
+  'id', // internal lead id — used to update a lead instead of duplicating it
 ];
 
 // ---------------------------------------------------------------------------
@@ -52,9 +53,18 @@ function doPost(e) {
     var sheet = getSheet_();
     var whatsapp = [];
     records.forEach(function (r) {
-      // Send first (if enabled) so the row records whether it actually went out.
-      var waStatus = WA_ENABLED ? sendFlyerWhatsApp_(r) : '';
-      sheet.appendRow(rowFor_(r, waStatus));
+      var existingRow = r.id ? findRowById_(sheet, r.id) : -1;
+      var waStatus;
+      if (existingRow > 0) {
+        // Editing an already-saved lead: update its row in place, keep the
+        // existing whatsapp_sent value, and do NOT resend WhatsApp.
+        waStatus = sheet.getRange(existingRow, colIndex_('whatsapp_sent')).getValue();
+        sheet.getRange(existingRow, 1, 1, HEADERS.length).setValues([rowFor_(r, waStatus)]);
+      } else {
+        // New lead: send WhatsApp (if enabled), then append a new row.
+        waStatus = WA_ENABLED ? sendFlyerWhatsApp_(r) : '';
+        sheet.appendRow(rowFor_(r, waStatus));
+      }
       whatsapp.push(waStatus);
     });
     return json_({ ok: true, count: records.length, whatsapp: whatsapp });
@@ -101,6 +111,23 @@ function getSheet_() {
   return sheet;
 }
 
+// 1-based column index for a header name (e.g. colIndex_('id')).
+function colIndex_(name) {
+  return HEADERS.indexOf(name) + 1;
+}
+
+// Returns the sheet row number (>= 2) whose 'id' column matches, else -1.
+function findRowById_(sheet, id) {
+  var last = sheet.getLastRow();
+  var idCol = colIndex_('id');
+  if (last < 2 || !id || idCol < 1) return -1;
+  var ids = sheet.getRange(2, idCol, last - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(id)) return i + 2;
+  }
+  return -1;
+}
+
 function rowFor_(r, waStatus) {
   r = r || {};
   return [
@@ -118,6 +145,7 @@ function rowFor_(r, waStatus) {
     r.notes || '',
     r.scannedAt || new Date().toISOString(),
     waStatus || '',
+    r.id || '',
   ];
 }
 
