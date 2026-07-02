@@ -2,10 +2,11 @@
  * Expo Lead Scanner — Google Sheets backend
  * =========================================
  * Paste this into a Google Sheet's Apps Script editor and deploy as a Web App.
- * See README.md → "Connect your Google Sheet" for the 6-step setup.
+ * See README.md → "Connect your Google Sheet" for the setup.
  *
- * It appends one row per scanned lead into a sheet/tab named "Leads",
- * creating the tab + header row automatically on first use.
+ * APPEND-ONLY: every save adds a new row; existing rows are never modified.
+ * Optionally sends each NEW lead the flyer + follow-up on WhatsApp via OpenWA,
+ * rotating across multiple sending numbers, and records which one sent.
  */
 
 var SHEET_NAME = 'Leads';
@@ -24,23 +25,24 @@ var HEADERS = [
   'notes',
   'scanned_at',
   'whatsapp_sent',
-  'id', // internal lead id — used to update a lead instead of duplicating it
+  'sent_from', // which WhatsApp number/session sent it
+  'id', // internal lead id — used to avoid messaging the same lead twice
 ];
 
 // ---------------------------------------------------------------------------
-// WhatsApp auto-send (open-wa) — OPTIONAL
-// Sends the flyer image to each new lead's WhatsApp the moment they're saved.
-// Leave WA_ENABLED = false until your open-wa server is running and reachable
-// over HTTPS (see README → "Auto-send a WhatsApp flyer").
+// WhatsApp auto-send via the OpenWA gateway.
+// Sends rotate across OPENWA_SESSIONS (spreads load across numbers).
+// Needs the "External requests" permission (declared in appsscript.json).
 // ---------------------------------------------------------------------------
-var WA_ENABLED = false; // master switch — set true once the values below are filled
-var OPENWA_BASE_URL = 'https://openwa.menuthere.com'; // OpenWA gateway base (no trailing slash)
-var OPENWA_SESSION_ID = 'YOUR_SESSION_ID'; // connected WhatsApp session id (GET /api/sessions)
-var OPENWA_API_KEY = 'YOUR_OPENWA_API_KEY'; // gateway X-API-Key
-// Works out-of-the-box from the public repo; or swap to https://<your-app>/flyer.jpg
+var WA_ENABLED = false; // master switch — set true once configured
+var OPENWA_BASE_URL = 'https://openwa.menuthere.com';
+var OPENWA_API_KEY = 'YOUR_OPENWA_API_KEY';
+var OPENWA_SESSIONS = [
+  { id: 'YOUR_SESSION_ID', name: 'session-1' },
+  // { id: 'ANOTHER_SESSION_ID', name: 'session-2' }, // add numbers to rotate
+];
 var WA_IMAGE_URL = 'https://raw.githubusercontent.com/ab-h-i-n/exibition-data-collector/main/public/flyer.jpg';
 var WA_CAPTION = 'Hello! 👋 This is the Menuthere team.\n\nThank you for your interest in Menuthere today. To receive *priority support* and access to our *free trial*, please fill out this short form:\n\nhttps://forms.gle/igwJHfe96nnKBbef6\n\nWe look forward to helping you get started!';
-// Follow-up message, sent as plain text right after the flyer.
 var WA_FOLLOWUP_2 = 'Are you available for a call today or tomorrow?';
 var WA_COUNTRY_CODE = '91'; // prepended to local 10-digit numbers
 
@@ -53,18 +55,20 @@ function doPost(e) {
     var sheet = getSheet_();
     var whatsapp = [];
     records.forEach(function (r) {
-      var existingRow = r.id ? findRowById_(sheet, r.id) : -1;
-      var waStatus;
-      if (existingRow > 0) {
-        // Editing an already-saved lead: update its row in place, keep the
-        // existing whatsapp_sent value, and do NOT resend WhatsApp.
-        waStatus = sheet.getRange(existingRow, colIndex_('whatsapp_sent')).getValue();
-        sheet.getRange(existingRow, 1, 1, HEADERS.length).setValues([rowFor_(r, waStatus)]);
-      } else {
-        // New lead: send WhatsApp (if enabled), then append a new row.
-        waStatus = WA_ENABLED ? sendFlyerWhatsApp_(r) : '';
-        sheet.appendRow(rowFor_(r, waStatus));
+      var waStatus = '';
+      var sentFrom = '';
+      if (WA_ENABLED) {
+        if (alreadySentWhatsApp_(sheet, r.id)) {
+          // Lead already messaged — do NOT send again on edits / re-syncs.
+          waStatus = 'Skipped (already sent)';
+        } else {
+          var result = sendFlyerWhatsApp_(r);
+          waStatus = result.status;
+          sentFrom = result.from;
+        }
       }
+      // Always append a new row — existing rows are never modified.
+      sheet.appendRow(rowFor_(r, waStatus, sentFrom));
       whatsapp.push(waStatus);
     });
     return json_({ ok: true, count: records.length, whatsapp: whatsapp });
@@ -75,8 +79,8 @@ function doPost(e) {
   }
 }
 
-// Open the deployment URL in a browser to confirm it's live AND see exactly
-// which spreadsheet/tab is receiving data and how many lead rows exist.
+// Open the deployment URL in a browser to confirm it's live AND see which
+// spreadsheet/tab is receiving data and how many lead rows exist.
 function doGet() {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -103,9 +107,11 @@ function getSheet_() {
     sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
     sheet.setFrozenRows(1);
   } else if (sheet.getLastColumn() < HEADERS.length) {
-    // A column was added to HEADERS (e.g. whatsapp_sent) — extend the header row
-    // of an existing sheet so the new values line up under a proper header.
-    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+    // New columns were added to HEADERS — write ONLY the new header cells so
+    // existing headers and data are never overwritten.
+    var from = sheet.getLastColumn() + 1;
+    var extra = HEADERS.slice(from - 1);
+    sheet.getRange(1, from, 1, extra.length).setValues([extra]);
     sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
   }
   return sheet;
@@ -116,19 +122,26 @@ function colIndex_(name) {
   return HEADERS.indexOf(name) + 1;
 }
 
-// Returns the sheet row number (>= 2) whose 'id' column matches, else -1.
-function findRowById_(sheet, id) {
+// True if a row with this lead id already shows a successful WhatsApp send, so
+// edits / re-syncs don't message the same lead again. Read-only (no writes).
+function alreadySentWhatsApp_(sheet, id) {
   var last = sheet.getLastRow();
+  if (last < 2 || !id) return false;
   var idCol = colIndex_('id');
-  if (last < 2 || !id || idCol < 1) return -1;
-  var ids = sheet.getRange(2, idCol, last - 1, 1).getValues();
-  for (var i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]) === String(id)) return i + 2;
+  var waCol = colIndex_('whatsapp_sent');
+  var rows = sheet.getRange(2, 1, last - 1, HEADERS.length).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (
+      String(rows[i][idCol - 1]) === String(id) &&
+      String(rows[i][waCol - 1] || '').indexOf('Sent') === 0
+    ) {
+      return true;
+    }
   }
-  return -1;
+  return false;
 }
 
-function rowFor_(r, waStatus) {
+function rowFor_(r, waStatus, sentFrom) {
   r = r || {};
   return [
     r.date || '',
@@ -145,18 +158,30 @@ function rowFor_(r, waStatus) {
     r.notes || '',
     r.scannedAt || new Date().toISOString(),
     waStatus || '',
+    sentFrom || '',
     r.id || '',
   ];
 }
 
-// Sends the flyer to one lead via the OpenWA gateway and returns a status
-// string for the sheet: 'Sent' | 'Failed (<code>)' | 'Failed' | 'No number'.
-// Never throws — a WhatsApp failure must not block saving the lead.
+// Rotates the sending session across OPENWA_SESSIONS (position persisted in
+// Script Properties), so consecutive leads use different numbers.
+function nextSession_() {
+  var props = PropertiesService.getScriptProperties();
+  var n = parseInt(props.getProperty('WA_ROTATE') || '0', 10);
+  if (isNaN(n) || n < 0) n = 0;
+  var session = OPENWA_SESSIONS[n % OPENWA_SESSIONS.length];
+  props.setProperty('WA_ROTATE', String((n + 1) % 1000000));
+  return session;
+}
+
+// Sends the flyer (with caption) then the follow-up text via the rotated
+// session. Returns { status, from }. Never throws.
 function sendFlyerWhatsApp_(r) {
   try {
     var chatId = toChatId_(r && r.phone);
-    if (!chatId) return 'No number';
-    var base = OPENWA_BASE_URL + '/api/sessions/' + OPENWA_SESSION_ID + '/messages/';
+    if (!chatId) return { status: 'No number', from: '' };
+    var session = nextSession_();
+    var base = OPENWA_BASE_URL + '/api/sessions/' + session.id + '/messages/';
     var opts = function (payload) {
       return {
         method: 'post',
@@ -166,33 +191,29 @@ function sendFlyerWhatsApp_(r) {
         muteHttpExceptions: true,
       };
     };
-    // 1) flyer image with the intro caption
     var res = UrlFetchApp.fetch(
       base + 'send-image',
       opts({ chatId: chatId, url: WA_IMAGE_URL, filename: 'menuthere-flyer.jpg', caption: WA_CAPTION })
     );
     var code = res.getResponseCode();
     var imageOk = code >= 200 && code < 300;
-    // 2) follow-up text (call availability) — best effort (won't flip the status)
     try {
       Utilities.sleep(1200); // let the image land first
       UrlFetchApp.fetch(base + 'send-text', opts({ chatId: chatId, text: WA_FOLLOWUP_2 }));
     } catch (e2) {
-      /* ignore follow-up failure */
+      /* follow-up is best-effort */
     }
-    return imageOk ? 'Sent' : 'Failed (' + code + ')';
+    return { status: imageOk ? 'Sent' : 'Failed (' + code + ')', from: session.name };
   } catch (err) {
-    return 'Failed: ' + (err && err.message ? err.message : err);
+    return { status: 'Failed: ' + (err && err.message ? err.message : err), from: '' };
   }
 }
 
-// Run this ONCE from the editor (pick "testWhatsApp" in the toolbar → Run) to
-// grant the "Connect to an external service" permission and send yourself a test
-// flyer. Watch the Execution log — it prints 'Sent' or 'Failed: <reason>'.
+// Run once from the editor (select testWhatsApp -> Run) to test / grant perms.
 function testWhatsApp() {
-  var status = sendFlyerWhatsApp_({ phone: '917012944024' });
-  Logger.log('WhatsApp test result: ' + status);
-  return status;
+  var result = sendFlyerWhatsApp_({ phone: '917012944024' });
+  Logger.log('WhatsApp test: ' + result.status + ' from ' + result.from);
+  return result;
 }
 
 // Turns a scanned phone number into a WhatsApp chatId (e.g. "916282826684@c.us").
@@ -200,7 +221,7 @@ function toChatId_(phone) {
   if (!phone) return '';
   var digits = String(phone).replace(/[^\d]/g, '').replace(/^0+/, '');
   if (!digits) return '';
-  if (digits.length === 10) digits = WA_COUNTRY_CODE + digits; // local → add country code
+  if (digits.length === 10) digits = WA_COUNTRY_CODE + digits; // local -> add country code
   return digits + '@c.us';
 }
 
