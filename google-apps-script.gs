@@ -58,10 +58,17 @@ function doPost(e) {
       var waStatus = '';
       var sentFrom = '';
       if (existingRow > 0) {
-        // Editing an existing lead: update ONLY its own row, keep the existing
-        // whatsapp_sent / sent_from, and do NOT resend.
-        waStatus = sheet.getRange(existingRow, colIndex_('whatsapp_sent')).getValue();
+        // Editing / re-syncing a lead: update ONLY its own row.
+        var prev = String(sheet.getRange(existingRow, colIndex_('whatsapp_sent')).getValue() || '');
         sentFrom = sheet.getRange(existingRow, colIndex_('sent_from')).getValue();
+        if (WA_ENABLED && prev.indexOf('Sent') !== 0) {
+          // Previous attempt wasn't a success — retry now (e.g. after fixing the number).
+          var retry = sendFlyerWhatsApp_(r);
+          waStatus = retry.status;
+          sentFrom = retry.from;
+        } else {
+          waStatus = prev; // already sent (or WA off) — never resend
+        }
         sheet.getRange(existingRow, 1, 1, HEADERS.length).setValues([rowFor_(r, waStatus, sentFrom)]);
       } else {
         // New lead: send the flyer (if enabled), then append a new row.
@@ -207,11 +214,13 @@ function testWhatsApp() {
 }
 
 // Local 10-digit -> "<countrycode><number>" for the Cloud API "to" field.
+// Returns '' for anything that isn't a plausible E.164 mobile (11-15 digits),
+// so bad badge numbers are marked "No number" instead of erroring with a 400.
 function toWaNumber_(phone) {
   if (!phone) return '';
   var d = String(phone).replace(/[^\d]/g, '').replace(/^0+/, '');
-  if (!d) return '';
-  if (d.length === 10) d = WA_COUNTRY_CODE + d;
+  if (d.length === 10) d = WA_COUNTRY_CODE + d; // local mobile -> add country code
+  if (d.length < 11 || d.length > 15) return '';
   return d;
 }
 
