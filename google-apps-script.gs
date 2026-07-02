@@ -4,9 +4,10 @@
  * Paste this into a Google Sheet's Apps Script editor and deploy as a Web App.
  * See README.md → "Connect your Google Sheet" for the setup.
  *
- * APPEND-ONLY: every save adds a new row; existing rows are never modified.
- * Optionally sends each NEW lead the flyer + follow-up on WhatsApp via OpenWA,
- * rotating across multiple sending numbers, and records which one sent.
+ * Upserts by lead id: a NEW lead is appended; editing an existing lead updates
+ * ONLY that lead's own row (matched by its unique id — no other row is touched).
+ * Sends the flyer + follow-up on WhatsApp to each new lead, rotating across
+ * numbers, and records which one sent. Never re-messages a lead.
  */
 
 var SHEET_NAME = 'Leads';
