@@ -38,9 +38,8 @@ var OPENWA_SESSION_ID = 'YOUR_SESSION_ID'; // connected WhatsApp session id (GET
 var OPENWA_API_KEY = 'YOUR_OPENWA_API_KEY'; // gateway X-API-Key
 // Works out-of-the-box from the public repo; or swap to https://<your-app>/flyer.jpg
 var WA_IMAGE_URL = 'https://raw.githubusercontent.com/ab-h-i-n/exibition-data-collector/main/public/flyer.jpg';
-var WA_CAPTION = 'Hello, this is the team from Menuthere. Thank you for enquiring about our product today.';
-// Two follow-up messages, sent as plain text right after the flyer, in order.
-var WA_FOLLOWUP_1 = 'Please find a short demo video of our platform here: https://youtube.com/shorts/6PR2BqLIxIA?si=OHtPPRDlykojCZGs - kindly note the video is currently in Malayalam. If language is a concern, please let us know and we will be glad to arrange it in your preferred language.';
+var WA_CAPTION = 'Hello! 👋 This is the Menuthere team.\n\nThank you for your interest in Menuthere today. To receive *priority support* and access to our *free trial*, please fill out this short form:\n\nhttps://forms.gle/igwJHfe96nnKBbef6\n\nWe look forward to helping you get started!';
+// Follow-up message, sent as plain text right after the flyer.
 var WA_FOLLOWUP_2 = 'Are you available for a call today or tomorrow?';
 var WA_COUNTRY_CODE = '91'; // prepended to local 10-digit numbers
 
@@ -146,11 +145,9 @@ function sendFlyerWhatsApp_(r) {
     );
     var code = res.getResponseCode();
     var imageOk = code >= 200 && code < 300;
-    // 2) + 3) two follow-up texts, in order — best effort (won't flip the status)
+    // 2) follow-up text (call availability) — best effort (won't flip the status)
     try {
       Utilities.sleep(1200); // let the image land first
-      UrlFetchApp.fetch(base + 'send-text', opts({ chatId: chatId, text: WA_FOLLOWUP_1 }));
-      Utilities.sleep(600);
       UrlFetchApp.fetch(base + 'send-text', opts({ chatId: chatId, text: WA_FOLLOWUP_2 }));
     } catch (e2) {
       /* ignore follow-up failure */
