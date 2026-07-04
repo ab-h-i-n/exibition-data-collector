@@ -3,8 +3,8 @@
  * =========================================
  * Paste into the Sheet's Apps Script editor and deploy as a Web App.
  *
- * - New lead  -> appends a row AND sends the marketing template (expo_msg_v2)
- *                via the OREO DEMO WhatsApp number (official Cloud API).
+ * - New lead  -> appends a row AND sends the flyer via the official WhatsApp
+ *                Cloud API (template expo_flyer_msg).
  * - Editing a lead -> updates ONLY that lead's own row (matched by id); never
  *                touches any other row, and never re-sends WhatsApp.
  */
@@ -30,23 +30,19 @@ var HEADERS = [
 ];
 
 // ---------------------------------------------------------------------------
-// WhatsApp marketing — official Cloud API (Meta). Sends the approved MARKETING
-// template `expo_msg_v2` (flyer image + "I'm Interested" button) to each NEW
-// lead, from the OREO DEMO partner number.
-//   1. Paste the OREO DEMO access token into WA_ACCESS_TOKEN. Get it from
-//      cravings-v2 Hasura: table whatsapp_business_integrations, partner
-//      "OREO DEMO". Keep it secret — do NOT commit the real token.
-//   2. Set WA_ENABLED = true.
-// Requires the "External requests" permission in appsscript.json (see README).
+// WhatsApp — official Cloud API (Meta). Sends the approved template to each
+// NEW lead. Fill WA_ACCESS_TOKEN (from your WhatsApp Cloud API creds) and set
+// WA_ENABLED = true. Requires the "External requests" permission in
+// appsscript.json (see README).
 // ---------------------------------------------------------------------------
 var WA_ENABLED = false; // master switch — set true once WA_ACCESS_TOKEN is filled
 var WA_API_VERSION = 'v22.0';
-var WA_PHONE_NUMBER_ID = '1203546912837921'; // OREO DEMO Cloud API sender (coexistence)
-var WA_ACCESS_TOKEN = 'YOUR_OREO_DEMO_ACCESS_TOKEN'; // OREO DEMO token (secret — from cravings-v2 Hasura)
-var WA_TEMPLATE_NAME = 'expo_msg_v2'; // approved MARKETING template on the OREO DEMO WABA
+var WA_PHONE_NUMBER_ID = 'YOUR_PHONE_NUMBER_ID'; // Cloud API sender phone number id
+var WA_ACCESS_TOKEN = 'YOUR_WHATSAPP_ACCESS_TOKEN'; // Cloud API access token (secret)
+var WA_TEMPLATE_NAME = 'expo_flyer_msg';
 var WA_TEMPLATE_LANG = 'en';
 var WA_IMAGE_URL = 'https://raw.githubusercontent.com/ab-h-i-n/exibition-data-collector/main/public/flyer.jpg';
-var WA_SENDER_LABEL = 'OREO DEMO'; // recorded in the sent_from column
+var WA_SENDER_LABEL = 'Menuthere'; // recorded in the sent_from column
 var WA_COUNTRY_CODE = '91'; // prepended to local 10-digit numbers
 
 function doPost(e) {
@@ -168,9 +164,7 @@ function rowFor_(r, waStatus, sentFrom) {
   ];
 }
 
-// Sends the marketing template (expo_msg_v2) via the official WhatsApp Cloud
-// API. Only the header image is passed at send time — the body/footer are static
-// and the "I'm Interested" quick-reply button needs no parameters.
+// Sends the flyer template via the official WhatsApp Cloud API.
 // Returns { status, from }. Never throws.
 function sendFlyerWhatsApp_(r) {
   try {
